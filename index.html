@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inventory — Right Sidebar, Mobile + Scanner</title>
+<style>
+  :root{
+    --bg:#0b0f14;--panel:#111827;--muted:#9fb0c1;--text:#e9f1f7;--border:#1f2937;--accent:#62c3ff;
+    --ok:#66d38f;--warn:#ffd166;--bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#0d1117;color:var(--text)}
+  header{padding:12px 16px;background:#0b0f14;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20}
+  h1{margin:0;font-size:18px}
+  .app{display:grid;grid-template-columns:1fr 260px;gap:12px;max-width:1200px;margin:0 auto;padding:12px}
+  @media(max-width:820px){.app{grid-template-columns:1fr 220px}}
+  @media(max-width:640px){
+    .app{grid-template-columns:1fr 180px}
+    .sidebar{padding:8px}
+  }
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:0 8px 20px rgba(0,0,0,.12)}
+  .sidebar{position:sticky;top:68px;height:max-content}
+  .tabs{display:flex;flex-direction:column;gap:8px}
+  .tab{padding:10px 12px;border:1px solid var(--border);background:#0f172a;border-radius:10px;color:var(--text);cursor:pointer;text-align:left}
+  .tab.active{outline:2px solid var(--accent)}
+  .panel{display:none}.panel.active{display:block}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row>*{flex:1}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input,select,button{padding:12px;border-radius:12px;border:1px solid var(--border);background:#0f172a;color:var(--text);width:100%}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left;font-size:14px;vertical-align:top}
+  .right{text-align:right}
+  .pill{display:inline-block;padding:3px 8px;border-radius:999px;border:1px solid var(--border);font-size:12px}
+  .ok{background:#0c2318;border-color:#144c2b;color:#9fe9be}
+  .warn{background:#231e0c;border-color:#564e1a;color:#ffe08a}
+  .bad{background:#2a1414;border-color:#5a2626;color:#f7aaaa}
+  .muted{color:var(--muted)} .small{font-size:12px}
+  .thumb{width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
+  .actions{display:flex;gap:6px;justify-content:flex-end}
+  /* scanner modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal.open{display:flex}
+  .modal .box{background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:12px;max-width:520px;width:92vw}
+  video{width:100%;border-radius:10px;border:1px solid var(--border)}
+</style>
+</head>
+<body>
+  <header><h1>📦 Inventory — Right Sidebar</h1></header>
+
+  <div class="app">
+    <!-- MAIN CONTENT -->
+    <main id="main" class="card">
+      <!-- ITEMS (default panel) -->
+      <section id="items" class="panel active">
+        <!-- Filters -->
+        <div class="card" style="margin-bottom:12px">
+          <h2 style="margin:0 0 8px">Filters</h2>
+          <div class="row">
+            <div><label>Name</label><input id="fName" placeholder="Filter by name"></div>
+            <div><label>SKU</label><input id="fSku" placeholder="Filter by SKU"></div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Category</label>
+              <select id="fCategory"><option value="">All categories</option></select>
+            </div>
+            <div><label>Location</label><input id="fLocation" placeholder="Filter by location"></div>
+          </div>
+        </div>
+
+        <!-- Add/Edit -->
+        <div class="card" style="margin-bottom:12px">
+          <h2 style="margin:0 0 6px">Add / Edit Item</h2>
+          <input type="hidden" id="itemId">
+          <div class="row">
+            <div><label>Name</label><input id="itemName" placeholder="e.g., Details + Details 1"></div>
+            <div>
+              <label>SKU</label>
+              <div class="row">
+                <input id="itemSku" placeholder="Scan or type">
+                <button id="btnScanSku" type="button">Scan Barcode</button>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div><label>Category</label><input id="itemCategory"></div>
+            <div><label>Location</label><input id="itemLocation"></div>
+          </div>
+          <div class="row">
+            <div><label>Cost</label><input id="itemCost" type="number" step="0.01"></div>
+            <div><label>Price</label><input id="itemPrice" type="number" step="0.01"></div>
+            <div><label>Qty</label><input id="itemQty" type="number" step="1"></div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Photo</label>
+              <input id="itemPhoto" type="file" accept="image/*" capture="environment">
+              <p class="small muted">On iPhone, this opens the camera. A small thumbnail is saved.</p>
+            </div>
+            <div>
+              <label>Preview</label>
+              <img id="itemPreview" class="thumb" alt="preview">
+            </div>
+          </div>
+          <div class="row">
+            <button id="saveItem">Save Item</button>
+            <button id="resetItem" type="button">Reset</button>
+          </div>
+        </div>
+
+        <!-- Items table -->
+        <div class="card">
+          <h2 style="margin:0 0 6px">Items</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Pic</th><th>Name</th><th>SKU</th><th>Category</th><th>Location</th>
+                <th class="right">Qty</th><th class="right">Cost</th><th class="right">Price</th><th class="right">Value</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="itemsTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TRANSACTIONS -->
+      <section id="txns" class="panel">
+        <div class="card" style="margin-bottom:12px">
+          <h2 style="margin:0 0 6px">New Transaction</h2>
+          <input type="hidden" id="txnId">
+          <label>Item</label>
+          <div class="row">
+            <select id="txnItem"></select>
+            <button id="btnScanLookup" type="button">Scan to Find Item</button>
+          </div>
+          <div class="row">
+            <div>
+              <label>Type</label>
+              <select id="txnType">
+                <option value="in">Stock IN</option>
+                <option value="out">Stock OUT</option>
+              </select>
+            </div>
+            <div>
+              <label>Quantity</label>
+              <input id="txnQty" type="number" step="1" placeholder="e.g., 10">
+            </div>
+          </div>
+          <div class="row">
+            <div><label>Date</label><input id="txnDate" type="date"></div>
+            <div><label>Reference / Note</label><input id="txnNote" placeholder="Invoice, reason…"></div>
+          </div>
+          <div class="row">
+            <button id="saveTxn">Save Transaction</button>
+            <button id="resetTxn" type="button">Reset</button>
+          </div>
+          <div id="lookupResult" class="small muted" style="margin-top:6px"></div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin:0 0 6px">Transactions</h2>
+          <div class="row">
+            <input id="txnSearch" placeholder="Search by item name, note">
+            <select id="txnFilterType">
+              <option value="">All Types</option>
+              <option value="in">Stock In</option>
+              <option value="out">Stock Out</option>
+            </select>
+          </div>
+          <table>
+            <thead><tr><th>Date</th><th>Item</th><th>Type</th><th>Qty</th><th>Note</th><th></th></tr></thead>
+            <tbody id="txnsTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="settings" class="panel">
+        <div class="card" style="margin-bottom:12px">
+          <h2 style="margin:0 0 6px">Backup / Restore</h2>
+          <div class="row">
+            <button id="exportBtn">Export JSON</button>
+            <input type="file" id="importFile" accept="application/json">
+          </div>
+          <p class="small muted">Export saves items + transactions (including photos). Import replaces current data.</p>
+        </div>
+
+        <div class="card">
+          <h2 style="margin:0 0 6px">Excel Seed</h2>
+          <button id="seedBtn" type="button">Import embedded Excel data → Items</button>
+          <p class="small muted">Paste your items JSON in the Embedded section (below in this HTML), then tap this.</p>
+        </div>
+      </section>
+
+      <!-- GAS (placeholder) -->
+      <section id="gas" class="panel">
+        <div class="card">
+          <h2 style="margin:0 0 6px">Gas (coming soon)</h2>
+          <p class="small muted">We’ll add this module later (pumps, meters, readings, etc.).</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- RIGHT SIDEBAR -->
+    <aside class="sidebar card">
+      <h3 style="margin:0 0 8px">Navigation</h3>
+      <div class="tabs">
+        <button class="tab active" data-tab="items">Items</button>
+        <button class="tab" data-tab="txns">Transactions</button>
+        <button class="tab" data-tab="settings">Settings</button>
+        <button class="tab" data-tab="gas">Gas</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:12px 0">
+      <p class="small muted">Barcode scanning requires HTTPS (or localhost). Photos work from local file.</p>
+    </aside>
+  </div>
+
+  <!-- Charts (kept out for now as dashboard is removed) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <!-- ZXing for barcode scanning -->
+  <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+
+  <!-- ====== EMBEDDED ITEMS JSON (optional) ======
+       Paste your array here if you want to seed items quickly, then click:
+       Settings → "Import embedded Excel data → Items"
+  -->
+  <script id="embedded-items" type="application/json">
+[
+  {
+    "name": "SAMPLE Gloves Blue Medium",
+    "sku": "GLV-100-M",
+    "category": "Gloves",
+    "location": "Aisle 1",
+    "cost": 1.2,
+    "price": 2.5,
+    "qty": 120
+  }
+  /* paste more items here if you want */
+]
+  </script>
+
+  <!-- Scanner Modal -->
+  <div id="scanModal" class="modal">
+    <div class="box">
+      <h3 style="margin:0 0 8px">Scan Barcode</h3>
+      <video id="video" playsinline></video>
+      <div class="row" style="margin-top:8px">
+        <button id="closeScan">Close</button>
+        <select id="cameraSelect"></select>
+      </div>
+      <p class="small muted">If camera list is empty on iPhone, open this file from an HTTPS site and allow camera.</p>
+    </div>
+  </div>
+
+  <script>
+  // ===== Helpers =====
+  const $ = s=>document.querySelector(s); const $$=s=>Array.from(document.querySelectorAll(s));
+  const fmt = n => (isNaN(n)? '0' : new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(n||0));
+
+  // ===== Right-sidebar tabs =====
+  function showPanel(id){
+    $$('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===id));
+    $$('.panel').forEach(p=>p.classList.toggle('active', p.id===id));
+  }
+  $$('.tab').forEach(b=> b.addEventListener('click',()=> showPanel(b.dataset.tab)));
+
+  // ===== DB (IndexedDB) =====
+  const DB_NAME='inv-right-sidebar', DB_VER=1;
+  let db;
+  function openDB(){ return new Promise((res,rej)=>{
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e=>{
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('items')){
+        const s=db.createObjectStore('items',{keyPath:'id',autoIncrement:true});
+        s.createIndex('name','name'); s.createIndex('sku','sku'); s.createIndex('category','category');
+      }
+      if(!db.objectStoreNames.contains('txns')){
+        const t=db.createObjectStore('txns',{keyPath:'id',autoIncrement:true});
+        t.createIndex('itemId','itemId'); t.createIndex('date','date'); t.createIndex('type','type');
+      }
+    };
+    req.onsuccess = e=>{ db=e.target.result; res(db); }; req.onerror=rej;
+  });}
+  function tx(stores,mode='readonly'){ return db.transaction(stores,mode); }
+  const P = r=>new Promise((res,rej)=>{ r.onsuccess=e=>res(e.target.result); r.onerror=e=>rej(e.target.error); });
+
+  async function itemsAll(){ return P(tx(['items']).objectStore('items').getAll()); }
+  async function itemAdd(it){ return P(tx(['items'],'readwrite').objectStore('items').add(it)); }
+  async function itemPut(it){ return P(tx(['items'],'readwrite').objectStore('items').put(it)); }
+  async function itemDel(id){
+    const t=tx(['items','txns'],'readwrite');
+    await P(t.objectStore('items').delete(id));
+    const cursor = t.objectStore('txns').openCursor();
+    await new Promise(done=>{ cursor.onsuccess = ev=>{ const c=ev.target.result; if(c){ if(c.value.itemId===id) c.delete(); c.continue(); } else done(); } });
+  }
+  async function txnsAll(){ return P(tx(['txns']).objectStore('txns').getAll()); }
+  async function txnAdd(tr){
+    const t=tx(['txns','items'],'readwrite');
+    const id=await P(t.objectStore('txns').add(tr));
+    const itStore=t.objectStore('items'); const it=await P(itStore.get(tr.itemId));
+    if(it){ const delta=tr.type==='in'? tr.qty : -tr.qty; it.qty=Math.max(0,(it.qty||0)+delta); await P(itStore.put(it)); }
+    return id;
+  }
+  async function txnDel(id){
+    const t=tx(['txns','items'],'readwrite');
+    const store=t.objectStore('txns'); const tr=await P(store.get(id));
+    if(tr){
+      const it=await P(t.objectStore('items').get(tr.itemId));
+      if(it){ const delta=tr.type==='in'?-tr.qty:tr.qty; it.qty=Math.max(0,(it.qty||0)+delta); await P(t.objectStore('items').put(it)); }
+      await P(store.delete(id));
+    }
+  }
+
+  // ===== Items UI =====
+  function lowStockPill(q){ return q===0?'bad':(q<5?'warn':'ok'); } // change 5 → 10 if you want
+  async function refreshFilters(){
+    // fill category dropdown with unique categories
+    const items = await itemsAll();
+    const set = new Set(items.map(it => (it.category||'').trim()).filter(Boolean));
+    const sel = $('#fCategory'); const cur = sel.value;
+    sel.innerHTML = '<option value="">All categories</option>' + [...set].sort().map(c=>`<option value="${c}">${c}</option>`).join('');
+    if([...set].includes(cur)) sel.value = cur;
+  }
+  function passFilters(it){
+    const fn = $('#fName').value.trim().toLowerCase();
+    const fs = $('#fSku').value.trim().toLowerCase();
+    const fc = $('#fCategory').value.trim().toLowerCase();
+    const fl = $('#fLocation').value.trim().toLowerCase();
+    const okN = !fn || (it.name||'').toLowerCase().includes(fn);
+    const okS = !fs || (it.sku||'').toLowerCase().includes(fs);
+    const okC = !fc || (it.category||'').toLowerCase()===fc;
+    const okL = !fl || (it.location||'').toLowerCase().includes(fl);
+    return okN && okS && okC && okL;
+  }
+  async function refreshItemsTable(){
+    const items = await itemsAll();
+    const rows = items.filter(passFilters);
+    const tb = $('#itemsTbody');
+    tb.innerHTML = rows.map(it=>{
+      const q=it.qty||0, pill=lowStockPill(q), val=(q*(it.cost||0));
+      const img = it.photoData ? `<img class="thumb" src="${it.photoData}" alt="">` : '';
+      return `<tr>
+        <td>${img}</td>
+        <td><strong>${it.name||''}</strong></td>
+        <td>${it.sku||''}</td>
+        <td>${it.category||''}</td>
+        <td>${it.location||''}</td>
+        <td class="right"><span class="pill ${pill}">${fmt(q)}</span></td>
+        <td class="right">${fmt(it.cost||0)}</td>
+        <td class="right">${fmt(it.price||0)}</td>
+        <td class="right">${fmt(val)}</td>
+        <td class="actions">
+          <button onclick="editItem(${it.id})">Edit</button>
+          <button onclick="deleteItem(${it.id})">Delete</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+  async function editItem(id){
+    const items=await itemsAll(); const it=items.find(x=>x.id===id); if(!it) return;
+    $('#itemId').value=it.id; $('#itemName').value=it.name||''; $('#itemSku').value=it.sku||'';
+    $('#itemCategory').value=it.category||''; $('#itemLocation').value=it.location||'';
+    $('#itemCost').value=it.cost||0; $('#itemPrice').value=it.price||0; $('#itemQty').value=it.qty||0;
+    $('#itemPreview').src = it.photoData || '';
+    // jump to Items panel (already there by default)
+    showPanel('items'); window.scrollTo({top:0,behavior:'smooth'});
+  }
+  async function deleteItem(id){
+    if(!confirm('Delete this item and its transactions?')) return;
+    await itemDel(id); await refreshFilters(); await refreshItemsTable(); await refreshTxnItemOptions(); await refreshTxnTables();
+  }
+  function resetItemForm(){
+    $('#itemId').value=''; $('#itemName').value=''; $('#itemSku').value='';
+    $('#itemCategory').value=''; $('#itemLocation').value='';
+    $('#itemCost').value=''; $('#itemPrice').value=''; $('#itemQty').value='';
+    $('#itemPhoto').value=''; $('#itemPreview').src='';
+  }
+  function fileToThumb(file, max=512){ return new Promise((res)=>{
+    if(!file) return res('');
+    const fr=new FileReader();
+    fr.onload=()=>{
+      const img=new Image(); img.onload=()=>{
+        const scale=Math.min(1,max/Math.max(img.width,img.height));
+        const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg',0.8));
+      }; img.onerror=()=>res(''); img.src=fr.result;
+    }; fr.onerror=()=>res(''); fr.readAsDataURL(file);
+  });}
+  async function saveItem(){
+    const v = {
+      id: $('#itemId').value,
+      name: $('#itemName').value.trim(),
+      sku: $('#itemSku').value.trim(),
+      category: $('#itemCategory').value.trim(),
+      location: $('#itemLocation').value.trim(),
+      cost: Number($('#itemCost').value||0),
+      price: Number($('#itemPrice').value||0),
+      qty: Number($('#itemQty').value||0),
+      photoData: $('#itemPreview').src || ''
+    };
+    if(!v.name && !v.sku){ alert('Please enter Name or SKU'); return; }
+    if(v.id){ v.id=Number(v.id); await itemPut(v); } else { delete v.id; v.createdAt=Date.now(); await itemAdd(v); }
+    resetItemForm(); await refreshFilters(); await refreshItemsTable(); await refreshTxnItemOptions();
+  }
+  $('#itemPhoto').addEventListener('change', async (e)=>{
+    const file = e.target.files?.[0];
+    const dataUrl = await fileToThumb(file); if(dataUrl) $('#itemPreview').src = dataUrl;
+  });
+
+  // ===== Transactions =====
+  async function refreshTxnItemOptions(){
+    const items=await itemsAll();
+    $('#txnItem').innerHTML = items.map(it=>`<option value="${it.id}">${it.name} (${it.sku||'no sku'})</option>`).join('');
+  }
+  function resetTxnForm(){
+    $('#txnId').value=''; $('#txnItem').selectedIndex=0; $('#txnType').value='in'; $('#txnQty').value='';
+    $('#txnDate').value=new Date().toISOString().slice(0,10); $('#txnNote').value=''; $('#lookupResult').textContent='';
+  }
+  async function saveTxn(){
+    const itemId=Number($('#txnItem').value||0), type=$('#txnType').value, qty=Number($('#txnQty').value||0);
+    const date=$('#txnDate').value? new Date($('#txnDate').value).getTime() : Date.now(); const note=$('#txnNote').value.trim();
+    if(!itemId || qty<=0){ alert('Select item and enter positive quantity'); return; }
+    const items=await itemsAll(); const it=items.find(x=>x.id===itemId);
+    if(type==='out' && (it?.qty||0)<qty){ alert('Insufficient stock for this item'); return; }
+    await txnAdd({itemId, type, qty, date, note});
+    resetTxnForm(); await refreshItemsTable(); await refreshTxnTables();
+  }
+  async function refreshTxnTables(){
+    const q=$('#txnSearch').value.trim().toLowerCase(), ftype=$('#txnFilterType').value;
+    const [items, txns]=await Promise.all([itemsAll(), txnsAll()]);
+    const byId=Object.fromEntries(items.map(i=>[i.id,i]));
+    const rows=txns.filter(t=>{
+      const nm=(byId[t.itemId]?.name||'').toLowerCase();
+      const okQ=!q || nm.includes(q) || (t.note||'').toLowerCase().includes(q);
+      const okT=!ftype || t.type===ftype; return okQ && okT;
+    }).sort((a,b)=>b.date-a.date);
+    $('#txnsTbody').innerHTML = rows.map(t=>{
+      const nm=byId[t.itemId]?.name || '(deleted item)';
+      const pill=t.type==='in' ? '<span class="pill ok">IN</span>' : '<span class="pill bad">OUT</span>';
+      return `<tr>
+        <td>${new Date(t.date).toLocaleDateString()}</td><td>${nm}</td><td>${pill}</td><td>${fmt(t.qty)}</td><td>${t.note||''}</td>
+        <td class="right"><button onclick="deleteTxn(${t.id})">Delete</button></td>
+      </tr>`;
+    }).join('');
+  }
+  async function deleteTxn(id){
+    if(!confirm('Delete this transaction?')) return;
+    await txnDel(id); await refreshItemsTable(); await refreshTxnTables();
+  }
+
+  // ===== Export / Import / Seed =====
+  async function exportJSON(){
+    const [items, txns] = await Promise.all([itemsAll(), txnsAll()]);
+    const payload={exportedAt:Date.now(), items, txns};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='inventory_backup.json'; a.click(); URL.revokeObjectURL(url);
+  }
+  async function importJSON(file){
+    if(!file) return;
+    const text=await file.text(); const obj=JSON.parse(text);
+    const t=tx(['items','txns'],'readwrite');
+    await Promise.all([P(t.objectStore('items').clear()), P(t.objectStore('txns').clear())]);
+    const t2=tx(['items','txns'],'readwrite');
+    for(const it of (obj.items||[])) await P(t2.objectStore('items').add(it));
+    for(const x of (obj.txns||[])) await P(t2.objectStore('txns').add(x));
+    await refreshFilters(); await refreshItemsTable(); await refreshTxnItemOptions(); await refreshTxnTables();
+  }
+  function getEmbeddedItems(){
+    try{ const el=document.getElementById('embedded-items'); if(!el) return []; const arr=JSON.parse(el.textContent.trim()||'[]'); return Array.isArray(arr)?arr:[]; }
+    catch(e){ return []; }
+  }
+  async function seedFromEmbedded(){
+    const embed=getEmbeddedItems();
+    if(!(embed && embed.length)){ alert('No embedded items found. Edit HTML to paste items in the Embedded section.'); return; }
+    if(!confirm('Import embedded items? This REPLACES items and clears transactions.')) return;
+    const t=tx(['items','txns'],'readwrite');
+    await Promise.all([P(t.objectStore('items').clear()), P(t.objectStore('txns').clear())]);
+    const t2=tx(['items'],'readwrite');
+    for(const it of embed){ await P(t2.objectStore('items').add(it)); }
+    await refreshFilters(); await refreshItemsTable(); await refreshTxnItemOptions(); await refreshTxnTables();
+    alert('Imported items from embedded data!');
+  }
+
+  // ===== Barcode Scanner (ZXing) =====
+  let codeReader, currentStream;
+  async function listCameras(){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.filter(d=>d.kind==='videoinput');
+    }catch(e){ return []; }
+  }
+  async function openScanner(onResult){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      alert('Camera not available. On iPhone, use HTTPS or localhost.'); return;
+    }
+    $('#scanModal').classList.add('open');
+    const sel = $('#cameraSelect');
+    sel.innerHTML = '<option>Loading cameras…</option>';
+    const cams = await listCameras();
+    sel.innerHTML = cams.length ? cams.map((c,i)=>`<option value="${c.deviceId}">${c.label || 'Camera '+(i+1)}</option>`).join('')
+                                : '<option>No camera found</option>';
+    const deviceId = sel.value || (cams[0] && cams[0].deviceId);
+    const constraints = { video: deviceId ? {deviceId:{exact:deviceId}} : {facingMode:'environment'} , audio:false };
+    if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); currentStream=null; }
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      currentStream = stream;
+      const video = document.getElementById('video'); video.srcObject = stream; video.play();
+      codeReader = new ZXing.BrowserMultiFormatReader();
+      codeReader.decodeFromVideoDevice(deviceId || null, 'video', (result, err)=>{
+        if(result){ onResult(result.getText()); closeScanner(); }
+      });
+    }catch(e){ alert('Could not open camera: '+e.message); closeScanner(); }
+    sel.onchange = ()=> openScanner(onResult);
+  }
+  function closeScanner(){
+    $('#scanModal').classList.remove('open');
+    if(codeReader){ try{ codeReader.reset(); }catch(e){} }
+    if(currentStream){ currentStream.getTracks().forEach(t=>t.stop()); currentStream=null; }
+  }
+  $('#closeScan').onclick = closeScanner;
+  $('#btnScanSku').onclick = ()=> openScanner(code => { $('#itemSku').value = code; });
+  $('#btnScanLookup').onclick = ()=> openScanner(async code => {
+    const items = await itemsAll();
+    const it = items.find(x => (x.sku||'').trim() === code.trim());
+    const out = $('#lookupResult');
+    if(it){
+      out.innerHTML = `Found: <strong>${it.name}</strong> — Price: <strong>${fmt(it.price||0)}</strong> — Qty: ${fmt(it.qty||0)}`;
+      const sel = $('#txnItem'); sel.innerHTML = items.map(x=>`<option value="${x.id}">${x.name} (${x.sku||'no sku'})</option>`).join('');
+      sel.value = String(it.id);
+    } else {
+      out.textContent = 'No item with that code (SKU). Add it in Items.';
+      // Optional: jump to Items and prefill
+      // showPanel('items'); $('#itemSku').value = code.trim(); $('#itemName').focus();
+    }
+  });
+
+  // ===== Wire & init =====
+  async function init(){
+    await openDB();
+    // Items
+    $('#saveItem').onclick = saveItem; $('#resetItem').onclick = resetItemForm;
+    $('#itemPhoto').addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const d=await fileToThumb(f); if(d) $('#itemPreview').src=d; });
+    // Filters
+    ['fName','fSku','fCategory','fLocation'].forEach(id => { document.getElementById(id).addEventListener('input', refreshItemsTable); });
+    $('#fCategory').addEventListener('change', refreshItemsTable);
+    // Txns
+    $('#saveTxn').onclick = saveTxn; $('#resetTxn').onclick = resetTxnForm;
+    $('#txnSearch').oninput = refreshTxnTables; $('#txnFilterType').onchange = refreshTxnTables;
+    // Settings
+    $('#exportBtn').onclick = exportJSON; $('#importFile').onchange = e=>importJSON(e.target.files[0]);
+    $('#seedBtn').onclick = seedFromEmbedded;
+
+    // Initial render
+    resetTxnForm();
+    await refreshFilters(); await refreshItemsTable(); await refreshTxnItemOptions(); await refreshTxnTables();
+    // Start on Items by default (dashboard removed)
+    showPanel('items');
+  }
+  init();
+  </script>
+</body>
+</html>
